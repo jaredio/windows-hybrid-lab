@@ -4,8 +4,10 @@
 # PowerShell
 *.log
 
+# Local Azure CLI cache/session
+scripts/.azure/
+
 # OS/editor
 .DS_Store
 Thumbs.db
 .vscode/
-
