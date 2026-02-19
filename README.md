@@ -80,12 +80,8 @@ This lab simulates a small enterprise environment and is designed to prove hands
   -AdminPassword "<StrongPassword>"
 ```
 
-## Security Notes
+## Security
 
 - Set `allowedSourceAddressPrefix` to your public IP in `x.x.x.x/32` format.
 - Use a strong local admin password or retrieve one from a secure secret store.
 - Public IP assignment is optional and parameterized per VM.
-
-## Employer-Facing Outcome
-
-This project demonstrates practical capability to design, provision, document, and operate a Windows hybrid lab with automation-first practices and reproducible infrastructure.
