@@ -1,0 +1,11 @@
+# Bicep build artifacts
+*.json
+
+# PowerShell
+*.log
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+
