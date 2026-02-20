@@ -1,19 +1,26 @@
 using '../main.bicep'
 
 param location = 'eastus'
-param namePrefix = 'az800dev'
+param westLocation = 'westus2'
 param adminUsername = 'labadmin'
-param vnetAddressSpace = '10.20.0.0/16'
-param subnetAddressPrefix = '10.20.1.0/24'
+param houstonVnetName = 'HoustonNET1'
+param houstonAddressSpace = '10.20.0.0/16'
+param houstonSubnetPrefix = '10.20.1.0/24'
+param westVnetName = 'WestNET1'
+param westAddressSpace = '10.30.0.0/16'
+param westSubnetPrefix = '10.30.1.0/24'
 param allowedSourceAddressPrefix = '203.0.113.10/32'
-param serverVmSize = 'Standard_B2ms'
-param clientVmSize = 'Standard_B2s'
-param dc1PublicIp = false
-param dc2PublicIp = false
-param clientPublicIp = true
+param domainControllerVmSize = 'Standard_B2ms'
+param memberVmSize = 'Standard_B2s'
+param houstonDc1PublicIp = false
+param houstonDc2PublicIp = false
+param westDc1PublicIp = false
+param houstonVm1PublicIp = true
+param houstonVm2PublicIp = false
 param tags = {
   environment: 'dev'
-  workload: 'az800-lab'
+  workload: 'windows-hybrid-lab'
+  owner: 'jaredio'
 }
 
 // Set with secure value at deployment time:

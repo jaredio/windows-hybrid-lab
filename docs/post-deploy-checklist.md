@@ -1,8 +1,8 @@
-# Post-Deployment Runbook (AD DS, DNS, DHCP, Domain Join)
+# Post-Deployment Runbook (Houston + West Forests)
 
-Use this checklist after infrastructure deployment to complete the Windows services layer of the lab.
+Use this checklist after deploying infrastructure from `infra/main.bicep`.
 
-## 1. Promote Domain Controller 1 (`*-dc1`)
+## 1. Promote `HOUSTONDC1` as first DC for `lab.local`
 
 Run in elevated PowerShell:
 
@@ -17,65 +17,98 @@ Install-ADDSForest `
   -Force
 ```
 
-Expected result: server reboots and becomes the first domain controller.
+Expected result: `HOUSTONDC1` is primary DC + DNS for `lab.local`.
 
-## 2. Validate and Configure DNS
+## 2. Configure Houston reverse DNS zone
 
-On `dc1`:
+On `HOUSTONDC1`:
 
 ```powershell
 Get-DnsServerZone
 Add-DnsServerPrimaryZone -NetworkId "10.20.1.0/24" -ReplicationScope Forest
 ```
 
-Expected result: forward zone for `lab.local` and reverse zone for the subnet.
+Expected result: forward and reverse zones exist for Houston forest.
 
-## 3. Join and Promote Domain Controller 2 (`*-dc2`)
+## 3. Promote `HOUSTONDC2` as replica DC for `lab.local`
 
-1. Set DNS client on `dc2` to `dc1` private IP.
-2. Join `dc2` to `lab.local`.
-3. Promote `dc2` as an additional domain controller.
+1. Set DNS client on `HOUSTONDC2` to `10.20.1.10`.
+2. Join `HOUSTONDC2` to `lab.local`.
+3. Promote as additional domain controller.
 
-Expected result: redundant AD DS and DNS capability.
+Expected result: AD DS and DNS redundancy in Houston.
 
-## 4. Configure DHCP
+## 4. Promote `WESTDC1` as first DC for `west.lab.local`
 
-On `dc1` (or a dedicated DHCP server):
-
-```powershell
-Install-WindowsFeature DHCP -IncludeManagementTools
-Add-DhcpServerInDC -DnsName "<dc1-fqdn>" -IPAddress 10.20.1.10
-Add-DhcpServerv4Scope -Name "LabScope" -StartRange 10.20.1.100 -EndRange 10.20.1.200 -SubnetMask 255.255.255.0
-Set-DhcpServerv4OptionValue -DnsServer 10.20.1.10 -Router 10.20.1.1 -DnsDomain "lab.local"
-```
-
-Expected result: dynamic addressing is available for domain clients.
-
-## 5. Join Client (`*-cl1`) to the Domain
-
-Set DNS to `dc1` private IP, then run:
+On `WESTDC1`:
 
 ```powershell
-Add-Computer -DomainName "lab.local" -Credential "LAB\Administrator" -Restart
+Install-WindowsFeature AD-Domain-Services, DNS -IncludeManagementTools
+Import-Module ADDSDeployment
+Install-ADDSForest `
+  -DomainName "west.lab.local" `
+  -DomainNetbiosName "WEST" `
+  -InstallDNS `
+  -SafeModeAdministratorPassword (Read-Host -AsSecureString "DSRM Password") `
+  -Force
 ```
 
-Expected result: client authenticates against AD and appears in AD Computers.
+Expected result: `WESTDC1` is primary DC + DNS for west forest.
 
-## 6. Test Group Policy Processing
+## 5. Configure West reverse DNS zone
 
-Create/link a test GPO and validate on `cl1`:
+On `WESTDC1`:
 
 ```powershell
-gpupdate /force
-gpresult /r
+Get-DnsServerZone
+Add-DnsServerPrimaryZone -NetworkId "10.30.1.0/24" -ReplicationScope Forest
 ```
 
-Expected result: policy applies successfully.
+Expected result: forward and reverse zones exist for west forest.
 
-## 7. Capture Evidence for Portfolio
+## 6. Configure cross-forest DNS resolution
 
-- Screenshot AD Users and Computers showing domain objects
-- Screenshot DHCP scope and active leases
-- Screenshot DNS forward and reverse zones
-- Screenshot `gpresult /r` on client
-- Export deployment outputs from Azure CLI for reproducibility
+Add conditional forwarders:
+
+- On Houston DNS (`HOUSTONDC1`/`HOUSTONDC2`): forward `west.lab.local` to `10.30.1.10`
+- On West DNS (`WESTDC1`): forward `lab.local` to `10.20.1.10` (and optionally `10.20.1.11`)
+
+Expected result: names resolve across forests over peered VNets.
+
+## 7. Configure bidirectional forest trust
+
+Create a two-way forest trust between:
+
+- `lab.local`
+- `west.lab.local`
+
+Expected result: users/resources can be authenticated across forests (per trust and ACL scope).
+
+## 8. Join member VMs
+
+Join:
+
+- `HOUSTONVM1` to `lab.local`
+- `HOUSTONVM2` to `lab.local`
+
+Expected result: member VMs authenticate via Houston DCs and resolve both forests.
+
+## 9. Validate DNS and trust
+
+From each host:
+
+```powershell
+nslookup HOUSTONDC1.lab.local
+nslookup WESTDC1.west.lab.local
+nslookup 10.20.1.10
+nslookup 10.30.1.10
+```
+
+Validate trust:
+
+```powershell
+nltest /domain_trusts
+```
+
+Expected result: forward + reverse resolution works and trust is visible.
+

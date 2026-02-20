@@ -1,87 +1,90 @@
-﻿# Windows Server Hybrid Infrastructure Lab (AZ-800)
+﻿# Windows Hybrid Lab - Daily Build Log
 
-Portfolio project demonstrating Infrastructure-as-Code, Windows Server administration, and hybrid identity/networking fundamentals using Azure and Bicep.
+This repo is my hands-on lab journal while building a Windows hybrid environment in Azure to practice enterprise AD, DNS, network peering, and cross-forest trust.
 
-## Project Summary
+## Target Environment
 
-This lab simulates a small enterprise environment and is designed to prove hands-on capability across:
+- `HOUSTONDC1` - Primary DC and DNS server for Houston (`lab.local`) on `HoustonNET1`
+- `HOUSTONDC2` - Replica DC for Houston (`lab.local`) on `HoustonNET1`
+- `WESTDC1` - Primary DC and DNS server for West (`west.lab.local`) on `WestNET1`
+- `HOUSTONVM1` - Domain-joined workload/test VM
+- `HOUSTONVM2` - Domain-joined workload/test VM
+- `HoustonNET1` and `WestNET1` are peered in Azure
+- `lab.local` and `west.lab.local` use a bidirectional forest trust
+- Forward and reverse DNS are configured so hosts are resolvable across environments
 
-- Infrastructure provisioning with reusable Bicep modules
-- Active Directory domain services setup and expansion
-- Core Windows network services (DNS, DHCP)
-- Client domain join and Group Policy validation
-- CI/CD-oriented deployment workflow with GitHub Actions
+## Daily Activity Log
 
-## Environment Scope
+### Day 1 - Foundation and repo setup
 
-- 2x Windows Server 2022 VMs (`dc1`, `dc2`)
-- 1x Windows 10 client VM (`cl1`)
-- Dedicated Azure virtual network + subnet
-- Network security group with controlled RDP ingress
-- Parameterized `dev` and `prod` deployment profiles
+- Created repo and IaC folder structure.
+- Added Bicep templates for reusable VM deployment.
+- Added parameter files for `dev` and `prod` profiles.
+- Added PowerShell scripts for validate, what-if, and deploy flows.
+- Added a manual GitHub Actions workflow for what-if/deploy.
 
-## Architecture at a Glance
+### Day 2 - Domain design and naming
 
-1. `dc1` is promoted to the first domain controller (`lab.local`).
-2. `dc2` is joined to the domain and promoted as an additional domain controller.
-3. DHCP and DNS are configured for centralized name resolution and IP assignment.
-4. `cl1` joins the domain for GPO and identity testing.
+- Standardized hostnames around the final design:
+  - `HOUSTONDC1`
+  - `HOUSTONDC2`
+  - `WESTDC1`
+  - `HOUSTONVM1`
+  - `HOUSTONVM2`
+- Defined Houston forest/domain as `lab.local`.
+- Defined West forest/domain as `west.lab.local`.
+
+### Day 3 - Network and connectivity planning
+
+- Planned separate Azure VNets:
+  - `HoustonNET1`
+  - `WestNET1`
+- Built VNet peering between Houston and West in Bicep.
+- Mapped connectivity requirements for AD DS, DNS, Kerberos, LDAP, and RPC traffic.
+
+### Day 4 - AD DS, DNS, and trust objectives
+
+- Built IaC deployment for:
+  - `HOUSTONDC1`
+  - `HOUSTONDC2`
+  - `WESTDC1`
+  - `HOUSTONVM1`
+  - `HOUSTONVM2`
+- Defined final AD/DNS goal state:
+  - `HOUSTONDC1` primary DC + DNS for `lab.local`
+  - `HOUSTONDC2` replica DC for `lab.local`
+  - `WESTDC1` primary DC + DNS for `west.lab.local`
+  - Bidirectional forest trust between `lab.local` and `west.lab.local`
+  - Forward and reverse DNS working both directions
+
+### Day 5 - Validation checklist (active)
+
+- Confirm A and PTR records for all systems.
+- Confirm name resolution both directions across peered VNets.
+- Confirm Houston replication health between `HOUSTONDC1` and `HOUSTONDC2`.
+- Confirm cross-forest authentication behavior through bidirectional trust.
+
+## What This Lab Demonstrates
+
+- Infrastructure-as-Code using Bicep
+- Multi-domain controller design (primary + replica)
+- Multi-forest Active Directory architecture
+- Azure VNet peering for hybrid-style connectivity
+- DNS forward/reverse zone implementation and troubleshooting
+- Forest trust design and validation
 
 ## Repository Structure
 
-- `infra/main.bicep`: Primary resource group deployment template.
-- `infra/modules/windows-vm.bicep`: Reusable Windows VM module used by all nodes.
-- `infra/parameters/dev.bicepparam`: Cost-conscious baseline for development.
-- `infra/parameters/prod.bicepparam`: Higher-capacity profile for full lab runs.
-- `scripts/validate.ps1`: Local validation of templates and parameter files.
-- `scripts/whatif.ps1`: Change preview before deployment.
-- `scripts/deploy.ps1`: Resource group deployment command wrapper.
-- `docs/post-deploy-checklist.md`: AD DS, DNS, DHCP, and domain-join runbook.
-- `.github/workflows/azure-lab.yml`: Manual GitHub Actions pipeline for what-if/deploy.
+- `infra/main.bicep`
+- `infra/modules/windows-vm.bicep`
+- `infra/parameters/dev.bicepparam`
+- `infra/parameters/prod.bicepparam`
+- `scripts/validate.ps1`
+- `scripts/whatif.ps1`
+- `scripts/deploy.ps1`
+- `docs/post-deploy-checklist.md`
 
-## Technical Highlights
+## Next Additions
 
-- Modular Bicep design for repeatable provisioning
-- Environment-specific parameterization
-- Security-conscious defaults (no wildcard ingress in parameter files)
-- Scripted deployment workflow for local and CI execution
-- Clear post-deployment operational checklist
-
-## Tooling
-
-- Azure CLI
-- Bicep
-- PowerShell 7
-- GitHub Actions
-
-## Usage
-
-### 1. Validate templates locally
-
-```powershell
-./scripts/validate.ps1
-```
-
-### 2. When a subscription is available, run what-if
-
-```powershell
-./scripts/whatif.ps1 `
-  -ResourceGroupName rg-az800-lab-dev `
-  -Environment dev `
-  -AdminPassword "<StrongPassword>"
-```
-
-### 3. Deploy
-
-```powershell
-./scripts/deploy.ps1 `
-  -ResourceGroupName rg-az800-lab-dev `
-  -Environment dev `
-  -AdminPassword "<StrongPassword>"
-```
-
-## Security
-
-- Set `allowedSourceAddressPrefix` to your public IP in `x.x.x.x/32` format.
-- Use a strong local admin password or retrieve one from a secure secret store.
-- Public IP assignment is optional and parameterized per VM.
+- Post-deploy scripts for AD DS promotion and DNS setup automation.
+- Forest trust setup and validation script/checklist artifacts.
