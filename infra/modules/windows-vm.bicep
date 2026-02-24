@@ -2,7 +2,6 @@ param location string
 param vmName string
 param vmSize string = 'Standard_B2ms'
 param subnetId string
-param networkSecurityGroupId string
 param privateIpAddress string
 param adminUsername string
 @secure()
@@ -31,9 +30,6 @@ resource nic 'Microsoft.Network/networkInterfaces@2023-09-01' = {
   location: location
   tags: tags
   properties: {
-    networkSecurityGroup: {
-      id: networkSecurityGroupId
-    }
     ipConfigurations: [
       {
         name: 'ipconfig1'

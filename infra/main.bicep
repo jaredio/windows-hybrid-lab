@@ -10,10 +10,11 @@ param westLocation string = ''
 param adminUsername string = 'labadmin'
 
 @secure()
+@minLength(12)
 @description('Local administrator password for all VMs.')
 param adminPassword string
 
-@description('Public source CIDR allowed for RDP (3389), for example 203.0.113.4/32.')
+@description('Public source CIDR allowed for RDP (3389). Set to your public IP for security.')
 param allowedSourceAddressPrefix string = '*'
 
 @description('Houston VNet name.')
@@ -40,6 +41,36 @@ param domainControllerVmSize string = 'Standard_B2ms'
 @description('VM size for member VMs.')
 param memberVmSize string = 'Standard_B2s'
 
+@description('Name of the Houston primary domain controller.')
+param houstonDc1Name string = 'HOUSTONDC1'
+
+@description('Name of the Houston replica domain controller.')
+param houstonDc2Name string = 'HOUSTONDC2'
+
+@description('Name of the West domain controller.')
+param westDc1Name string = 'WESTDC1'
+
+@description('Name of the first Houston member VM.')
+param houstonVm1Name string = 'HOUSTONVM1'
+
+@description('Name of the second Houston member VM.')
+param houstonVm2Name string = 'HOUSTONVM2'
+
+@description('Private IP address for HOUSTONDC1.')
+param houstonDc1Ip string = '10.20.1.10'
+
+@description('Private IP address for HOUSTONDC2.')
+param houstonDc2Ip string = '10.20.1.11'
+
+@description('Private IP address for WESTDC1.')
+param westDc1Ip string = '10.30.1.10'
+
+@description('Private IP address for HOUSTONVM1.')
+param houstonVm1Ip string = '10.20.1.20'
+
+@description('Private IP address for HOUSTONVM2.')
+param houstonVm2Ip string = '10.20.1.21'
+
 @description('Whether HOUSTONDC1 gets a public IP.')
 param houstonDc1PublicIp bool = false
 
@@ -55,6 +86,10 @@ param houstonVm1PublicIp bool = true
 @description('Whether HOUSTONVM2 gets a public IP.')
 param houstonVm2PublicIp bool = false
 
+@allowed(['WritableReplica', 'RODC'])
+@description('Role for HOUSTONDC2: writable replica DC or Read-Only Domain Controller.')
+param houstonDc2Role string = 'WritableReplica'
+
 @description('Tags applied to all resources.')
 param tags object = {
   workload: 'windows-hybrid-lab'
@@ -65,12 +100,6 @@ param tags object = {
 var resolvedWestLocation = empty(westLocation) ? location : westLocation
 var houstonSubnetName = 'HoustonServers'
 var westSubnetName = 'WestServers'
-
-var houstonDc1Name = 'HOUSTONDC1'
-var houstonDc2Name = 'HOUSTONDC2'
-var westDc1Name = 'WESTDC1'
-var houstonVm1Name = 'HOUSTONVM1'
-var houstonVm2Name = 'HOUSTONVM2'
 
 resource houstonNsg 'Microsoft.Network/networkSecurityGroups@2023-09-01' = {
   name: '${houstonVnetName}-nsg'
@@ -199,8 +228,7 @@ module houstonDc1 './modules/windows-vm.bicep' = {
     vmName: houstonDc1Name
     vmSize: domainControllerVmSize
     subnetId: resourceId('Microsoft.Network/virtualNetworks/subnets', houstonVnet.name, houstonSubnetName)
-    networkSecurityGroupId: houstonNsg.id
-    privateIpAddress: '10.20.1.10'
+    privateIpAddress: houstonDc1Ip
     adminUsername: adminUsername
     adminPassword: adminPassword
     publisher: 'MicrosoftWindowsServer'
@@ -218,15 +246,14 @@ module houstonDc2 './modules/windows-vm.bicep' = {
     vmName: houstonDc2Name
     vmSize: domainControllerVmSize
     subnetId: resourceId('Microsoft.Network/virtualNetworks/subnets', houstonVnet.name, houstonSubnetName)
-    networkSecurityGroupId: houstonNsg.id
-    privateIpAddress: '10.20.1.11'
+    privateIpAddress: houstonDc2Ip
     adminUsername: adminUsername
     adminPassword: adminPassword
     publisher: 'MicrosoftWindowsServer'
     offer: 'WindowsServer'
     sku: '2022-datacenter-azure-edition'
     createPublicIp: houstonDc2PublicIp
-    tags: tags
+    tags: union(tags, { adRole: houstonDc2Role })
   }
 }
 
@@ -237,8 +264,7 @@ module westDc1 './modules/windows-vm.bicep' = {
     vmName: westDc1Name
     vmSize: domainControllerVmSize
     subnetId: resourceId('Microsoft.Network/virtualNetworks/subnets', westVnet.name, westSubnetName)
-    networkSecurityGroupId: westNsg.id
-    privateIpAddress: '10.30.1.10'
+    privateIpAddress: westDc1Ip
     adminUsername: adminUsername
     adminPassword: adminPassword
     publisher: 'MicrosoftWindowsServer'
@@ -256,13 +282,12 @@ module houstonVm1 './modules/windows-vm.bicep' = {
     vmName: houstonVm1Name
     vmSize: memberVmSize
     subnetId: resourceId('Microsoft.Network/virtualNetworks/subnets', houstonVnet.name, houstonSubnetName)
-    networkSecurityGroupId: houstonNsg.id
-    privateIpAddress: '10.20.1.20'
+    privateIpAddress: houstonVm1Ip
     adminUsername: adminUsername
     adminPassword: adminPassword
-    publisher: 'MicrosoftWindowsDesktop'
-    offer: 'windows-10'
-    sku: 'win10-22h2-pro-g2'
+    publisher: 'MicrosoftWindowsServer'
+    offer: 'WindowsServer'
+    sku: '2022-datacenter-azure-edition'
     createPublicIp: houstonVm1PublicIp
     tags: tags
   }
@@ -275,13 +300,12 @@ module houstonVm2 './modules/windows-vm.bicep' = {
     vmName: houstonVm2Name
     vmSize: memberVmSize
     subnetId: resourceId('Microsoft.Network/virtualNetworks/subnets', houstonVnet.name, houstonSubnetName)
-    networkSecurityGroupId: houstonNsg.id
-    privateIpAddress: '10.20.1.21'
+    privateIpAddress: houstonVm2Ip
     adminUsername: adminUsername
     adminPassword: adminPassword
-    publisher: 'MicrosoftWindowsDesktop'
-    offer: 'windows-10'
-    sku: 'win10-22h2-pro-g2'
+    publisher: 'MicrosoftWindowsServer'
+    offer: 'WindowsServer'
+    sku: '2022-datacenter-azure-edition'
     createPublicIp: houstonVm2PublicIp
     tags: tags
   }
@@ -301,4 +325,3 @@ output houstonDc2PrivateIp string = houstonDc2.outputs.privateIp
 output westDc1PrivateIp string = westDc1.outputs.privateIp
 output houstonVm1PrivateIp string = houstonVm1.outputs.privateIp
 output houstonVm2PrivateIp string = houstonVm2.outputs.privateIp
-
