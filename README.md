@@ -50,7 +50,7 @@ I built this because I wanted a repeatable environment for learning Windows iden
 ### 1. Clone and configure
 
 ```bash
-git clone https://github.com/<your-username>/windows-hybrid-lab.git
+git clone https://github.com/jaredio/windows-hybrid-lab.git
 cd windows-hybrid-lab
 ```
 
