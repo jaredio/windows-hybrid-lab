@@ -317,3 +317,109 @@ Describe 'Security Baseline' {
         }
     }
 }
+
+# ═══════════════════════════════════════════════════════════════════════
+# 7. File Server & DFS
+# ═══════════════════════════════════════════════════════════════════════
+
+Describe 'File Server & DFS' {
+
+    Context 'Houston file server' {
+        It 'Department share exists on HOUSTONFS1' {
+            Test-Path "\\HOUSTONFS1\Department" | Should -BeTrue
+        }
+
+        It 'Public share exists on HOUSTONFS1' {
+            Test-Path "\\HOUSTONFS1\Public" | Should -BeTrue
+        }
+
+        It 'DFS Namespace \\lab.local\Shares is accessible' {
+            Test-Path "\\lab.local\Shares" | Should -BeTrue
+        }
+    }
+
+    Context 'DFS Replication' -Skip:$SkipCrossForest {
+        It 'Replication group Houston-West-Replication exists' {
+            $group = Get-DfsReplicationGroup -GroupName 'Houston-West-Replication' -ErrorAction SilentlyContinue
+            $group | Should -Not -BeNullOrEmpty
+        }
+    }
+}
+
+# ═══════════════════════════════════════════════════════════════════════
+# 8. DHCP Server
+# ═══════════════════════════════════════════════════════════════════════
+
+Describe 'DHCP Server' {
+
+    It 'DHCP server is authorized in Active Directory' {
+        $authorized = Get-DhcpServerInDC -ErrorAction SilentlyContinue
+        $authorized | Where-Object { $_.DnsName -match 'HOUSTONDHCP1' } | Should -Not -BeNullOrEmpty
+    }
+
+    It 'Houston-Clients scope exists and is active' {
+        $scope = Invoke-Command -ComputerName HOUSTONDHCP1 -ScriptBlock {
+            Get-DhcpServerv4Scope | Where-Object { $_.Name -eq 'Houston-Clients' }
+        } -ErrorAction SilentlyContinue
+        $scope | Should -Not -BeNullOrEmpty
+        $scope.State | Should -Be 'Active'
+    }
+}
+
+# ═══════════════════════════════════════════════════════════════════════
+# 9. WSUS
+# ═══════════════════════════════════════════════════════════════════════
+
+Describe 'WSUS' {
+
+    It 'WSUS service (WsusService) is running on HOUSTONDHCP1' {
+        $svc = Invoke-Command -ComputerName HOUSTONDHCP1 -ScriptBlock {
+            Get-Service WsusService -ErrorAction SilentlyContinue
+        } -ErrorAction SilentlyContinue
+        $svc | Should -Not -BeNullOrEmpty
+        $svc.Status | Should -Be 'Running'
+    }
+
+    It 'WSUS client GPO exists' {
+        $gpo = Get-GPO -Name 'WSUS - Client Configuration' -ErrorAction SilentlyContinue
+        $gpo | Should -Not -BeNullOrEmpty
+    }
+}
+
+# ═══════════════════════════════════════════════════════════════════════
+# 10. Active Directory Certificate Services
+# ═══════════════════════════════════════════════════════════════════════
+
+Describe 'AD Certificate Services' {
+
+    It 'CertSvc service is running on HOUSTONDC1' {
+        $svc = Get-Service CertSvc -ErrorAction SilentlyContinue
+        $svc | Should -Not -BeNullOrEmpty
+        $svc.Status | Should -Be 'Running'
+    }
+
+    It 'LDAPS (port 636) is listening on HOUSTONDC1' {
+        $test = Test-NetConnection -ComputerName HOUSTONDC1 -Port 636 -WarningAction SilentlyContinue
+        $test.TcpTestSucceeded | Should -BeTrue
+    }
+}
+
+# ═══════════════════════════════════════════════════════════════════════
+# 11. Entra Connect
+# ═══════════════════════════════════════════════════════════════════════
+
+Describe 'Entra Connect' {
+
+    It 'ADSync service is running on HOUSTAAC1' {
+        $svc = Invoke-Command -ComputerName HOUSTAAC1 -ScriptBlock {
+            Get-Service ADSync -ErrorAction SilentlyContinue
+        } -ErrorAction SilentlyContinue
+        $svc | Should -Not -BeNullOrEmpty
+        $svc.Status | Should -Be 'Running'
+    }
+
+    It 'Sync test users exist in AD' {
+        $user = Get-ADUser -Filter "SamAccountName -eq 'synctest1'" -ErrorAction SilentlyContinue
+        $user | Should -Not -BeNullOrEmpty
+    }
+}

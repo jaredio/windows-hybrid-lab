@@ -7,6 +7,17 @@
 # Local Azure CLI cache/session
 scripts/.azure/
 
+# Secrets and certificates
+.env
+.env.*
+secrets.*
+local.settings.json
+*.pfx
+*.p12
+*.pem
+*.key
+*.cer
+
 # OS/editor
 .DS_Store
 Thumbs.db

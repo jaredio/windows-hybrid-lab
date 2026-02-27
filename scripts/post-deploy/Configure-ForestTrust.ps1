@@ -41,7 +41,7 @@ $ErrorActionPreference = "Stop"
 # ── Step 1: Check for existing trust ──────────────────────────────────
 Write-Host "`n[1/4] Checking for existing trust..." -ForegroundColor Cyan
 
-$existingTrust = Get-ADTrust -Filter { Target -eq $RemoteDomain } -ErrorAction SilentlyContinue
+$existingTrust = Get-ADTrust -Filter "Target -eq '$RemoteDomain'" -ErrorAction SilentlyContinue
 if ($existingTrust) {
     Write-Host "  Trust to '$RemoteDomain' already exists." -ForegroundColor Yellow
     Write-Host "    Direction : $($existingTrust.Direction)"
@@ -103,7 +103,7 @@ if ($LASTEXITCODE -eq 0) {
 Write-Host "`n[4/4] Validation..." -ForegroundColor Cyan
 
 Write-Host "`n--- AD Trust Object ---"
-Get-ADTrust -Filter { Target -eq $RemoteDomain } -ErrorAction SilentlyContinue |
+Get-ADTrust -Filter "Target -eq '$RemoteDomain'" -ErrorAction SilentlyContinue |
     Format-List Name, Target, Direction, ForestTransitive, TrustType
 
 Write-Host "--- Domain Trusts (nltest) ---"

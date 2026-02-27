@@ -25,10 +25,26 @@
 
 param(
     [string]$DomainName = 'lab.local',
-    [string]$SiteName   = 'Houston'
+    [string]$SiteName   = 'Houston',
+    [string]$PrimaryDc  = 'HOUSTONDC1',
+    [string]$GroupContainerDn = 'CN=Users,DC=lab,DC=local'
 )
 
 $ErrorActionPreference = "Stop"
+Import-Module ActiveDirectory
+
+$domainInfo = Get-ADDomain -Identity $DomainName
+$domainNetbios = $domainInfo.NetBIOSName
+$resolvedPrimaryDc = if ([string]::IsNullOrWhiteSpace($PrimaryDc)) {
+    'HOUSTONDC1'
+} else {
+    $PrimaryDc
+}
+$resolvedGroupContainerDn = if ([string]::IsNullOrWhiteSpace($GroupContainerDn)) {
+    'CN=Users,DC=lab,DC=local'
+} else {
+    $GroupContainerDn
+}
 
 # ── Step 1: Install AD DS and DNS features ───────────────────────────
 Write-Host "`n[1/5] Installing AD-Domain-Services and DNS features..." -ForegroundColor Cyan
@@ -36,25 +52,26 @@ Install-WindowsFeature AD-Domain-Services, DNS -IncludeManagementTools
 
 # ── Step 2: Collect credentials ──────────────────────────────────────
 Write-Host "`n[2/5] Collecting credentials..." -ForegroundColor Cyan
-$domainCred = Get-Credential -Message "Enter domain admin credentials (LAB\labadmin)"
+$domainCred = Get-Credential -Message "Enter domain admin credentials ($domainNetbios\labadmin)"
 $dsrmPassword = Read-Host -AsSecureString -Prompt "Enter DSRM (Directory Services Restore Mode) password"
 
 # ── Step 3: Create RODC password replication group on the domain ─────
 Write-Host "`n[3/5] Creating RODC password replication group on the domain..." -ForegroundColor Cyan
-$session = New-PSSession -ComputerName HOUSTONDC1 -Credential $domainCred
+$session = New-PSSession -ComputerName $resolvedPrimaryDc -Credential $domainCred
 Invoke-Command -Session $session -ScriptBlock {
+    param($ContainerDn)
     Import-Module ActiveDirectory
     if (-not (Get-ADGroup -Filter 'Name -eq "RODC-Allowed-Replication"' -ErrorAction SilentlyContinue)) {
         New-ADGroup -Name "RODC-Allowed-Replication" `
             -GroupScope Global `
             -GroupCategory Security `
-            -Path "CN=Users,DC=lab,DC=local" `
+            -Path $ContainerDn `
             -Description "Accounts whose passwords can be cached on the RODC"
         Write-Host "  Created group: RODC-Allowed-Replication"
     } else {
         Write-Host "  Group RODC-Allowed-Replication already exists -- skipping."
     }
-}
+} -ArgumentList $resolvedGroupContainerDn
 Remove-PSSession $session
 
 # ── Step 4: Promote as RODC ──────────────────────────────────────────
@@ -72,11 +89,11 @@ Install-ADDSDomainController `
         "BUILTIN\Server Operators",
         "BUILTIN\Backup Operators",
         "BUILTIN\Account Operators",
-        "$DomainName\Denied RODC Password Replication Group"
+        "$domainNetbios\Denied RODC Password Replication Group"
     ) `
     -AllowPasswordReplicationAccountName @(
-        "$DomainName\RODC-Allowed-Replication",
-        "$DomainName\Allowed RODC Password Replication Group"
+        "$domainNetbios\RODC-Allowed-Replication",
+        "$domainNetbios\Allowed RODC Password Replication Group"
     ) `
     -NoGlobalCatalog:$false `
     -Force

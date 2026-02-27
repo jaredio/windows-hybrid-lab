@@ -37,12 +37,26 @@ param westDc1Ip = '10.30.1.10'
 param houstonVm1Ip = '10.20.1.20'
 param houstonVm2Ip = '10.20.1.21'
 
+// ── New service VMs ───────────────────────────────────────────────────
+param houstonFs1Name = 'HOUSTONFS1'
+param houstonDhcp1Name = 'HOUSTONDHCP1'
+param houstonAac1Name = 'HOUSTAAC1'
+param westFs1Name = 'WESTFS1'
+param houstonFs1Ip = '10.20.1.30'
+param houstonDhcp1Ip = '10.20.1.40'
+param houstonAac1Ip = '10.20.1.50'
+param westFs1Ip = '10.30.1.20'
+
 // ── Public IP toggles ───────────────────────────────────────────────
 param houstonDc1PublicIp = false
 param houstonDc2PublicIp = false
 param westDc1PublicIp = false
 param houstonVm1PublicIp = false
 param houstonVm2PublicIp = false
+param houstonFs1PublicIp = false
+param houstonDhcp1PublicIp = false
+param houstonAac1PublicIp = false
+param westFs1PublicIp = false
 
 // ── AD DS role overrides ────────────────────────────────────────────
 // Change to 'RODC' to promote HOUSTONDC2 as a Read-Only Domain Controller

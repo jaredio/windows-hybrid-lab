@@ -8,6 +8,8 @@ $ErrorActionPreference = "Stop"
 
 # Keep Azure CLI session/cache local to the repo to avoid profile permission issues.
 $env:AZURE_CONFIG_DIR = Join-Path $PSScriptRoot ".azure"
+$env:AZ_BICEP_CHECK_VERSION = "false"
+$env:BICEP_SKIP_UPDATE_CHECK = "true"
 New-Item -ItemType Directory -Path $env:AZURE_CONFIG_DIR -Force | Out-Null
 
 Write-Host "Validating tooling..."

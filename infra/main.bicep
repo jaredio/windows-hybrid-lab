@@ -61,6 +61,18 @@ param houstonVm1Name string = 'HOUSTONVM1'
 @description('Name of the second Houston member VM.')
 param houstonVm2Name string = 'HOUSTONVM2'
 
+@description('Name of the Houston file server.')
+param houstonFs1Name string = 'HOUSTONFS1'
+
+@description('Name of the Houston DHCP/WSUS server.')
+param houstonDhcp1Name string = 'HOUSTONDHCP1'
+
+@description('Name of the Entra Connect sync server.')
+param houstonAac1Name string = 'HOUSTAAC1'
+
+@description('Name of the West file server.')
+param westFs1Name string = 'WESTFS1'
+
 // ── Private IPs ─────────────────────────────────────────────────────────────
 @description('Private IP address for HOUSTONDC1.')
 param houstonDc1Ip string = '10.20.1.10'
@@ -77,6 +89,18 @@ param houstonVm1Ip string = '10.20.1.20'
 @description('Private IP address for HOUSTONVM2.')
 param houstonVm2Ip string = '10.20.1.21'
 
+@description('Private IP address for HOUSTONFS1.')
+param houstonFs1Ip string = '10.20.1.30'
+
+@description('Private IP address for HOUSTONDHCP1.')
+param houstonDhcp1Ip string = '10.20.1.40'
+
+@description('Private IP address for HOUSTAAC1.')
+param houstonAac1Ip string = '10.20.1.50'
+
+@description('Private IP address for WESTFS1.')
+param westFs1Ip string = '10.30.1.20'
+
 // ── Public IP toggles ──────────────────────────────────────────────────────
 @description('Whether HOUSTONDC1 gets a public IP.')
 param houstonDc1PublicIp bool = false
@@ -92,6 +116,18 @@ param houstonVm1PublicIp bool = true
 
 @description('Whether HOUSTONVM2 gets a public IP.')
 param houstonVm2PublicIp bool = false
+
+@description('Whether HOUSTONFS1 gets a public IP.')
+param houstonFs1PublicIp bool = false
+
+@description('Whether HOUSTONDHCP1 gets a public IP.')
+param houstonDhcp1PublicIp bool = false
+
+@description('Whether HOUSTAAC1 gets a public IP.')
+param houstonAac1PublicIp bool = false
+
+@description('Whether WESTFS1 gets a public IP.')
+param westFs1PublicIp bool = false
 
 // ── AD DS role ──────────────────────────────────────────────────────────────
 @allowed(['WritableReplica', 'RODC'])
@@ -121,6 +157,9 @@ param westDomainName string = 'west.lab.local'
 @description('NetBIOS name for the West domain.')
 param westNetbiosName string = 'WEST'
 
+@description('AD site name used during automated DC promotion.')
+param dcPromotionSiteName string = 'Default-First-Site-Name'
+
 // ── Monitoring ──────────────────────────────────────────────────────────────
 @description('Deploy Log Analytics workspace and Azure Monitor Agent for centralized logging.')
 param deployMonitoring bool = true
@@ -149,11 +188,11 @@ var houstonDc1Template = '''powershell -ExecutionPolicy Bypass -Command "Install
 
 var westDc1Template = '''powershell -ExecutionPolicy Bypass -Command "Install-WindowsFeature AD-Domain-Services, DNS -IncludeManagementTools; Import-Module ADDSDeployment; $pw = ConvertTo-SecureString '__PASSWORD__' -AsPlainText -Force; Install-ADDSForest -DomainName '__DOMAIN__' -DomainNetbiosName '__NETBIOS__' -InstallDNS -SafeModeAdministratorPassword $pw -NoRebootOnCompletion -Force; Add-DnsServerPrimaryZone -NetworkId '10.30.1.0/24' -ReplicationScope Forest -ErrorAction SilentlyContinue; shutdown /r /t 15 /f"'''
 
-var houstonDc2RodcTemplate = '''powershell -ExecutionPolicy Bypass -Command "Set-DnsClientServerAddress -InterfaceAlias Ethernet -ServerAddresses __DC1IP__; Install-WindowsFeature AD-Domain-Services, DNS -IncludeManagementTools; Import-Module ADDSDeployment; $pw = ConvertTo-SecureString '__PASSWORD__' -AsPlainText -Force; $cred = New-Object System.Management.Automation.PSCredential('__NETBIOS__\__USER__', $pw); $retries = 0; while ($retries -lt 10) { try { Install-ADDSReadOnlyDomainController -DomainName '__DOMAIN__' -Credential $cred -InstallDNS -SafeModeAdministratorPassword $pw -SiteName 'Default-First-Site-Name' -NoRebootOnCompletion -Force; break } catch { $retries++; Start-Sleep -Seconds 30 } }; shutdown /r /t 15 /f"'''
+var houstonDc2RodcTemplate = '''powershell -ExecutionPolicy Bypass -Command "$ifIndex = (Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -First 1 -ExpandProperty ifIndex); if ($ifIndex) { Set-DnsClientServerAddress -InterfaceIndex $ifIndex -ServerAddresses __DC1IP__ }; Install-WindowsFeature AD-Domain-Services, DNS -IncludeManagementTools; Import-Module ADDSDeployment; $pw = ConvertTo-SecureString '__PASSWORD__' -AsPlainText -Force; $cred = New-Object System.Management.Automation.PSCredential('__NETBIOS__\__USER__', $pw); $retries = 0; while ($retries -lt 10) { try { Install-ADDSDomainController -DomainName '__DOMAIN__' -Credential $cred -ReadOnlyReplica -InstallDNS -SafeModeAdministratorPassword $pw -SiteName '__SITENAME__' -NoRebootOnCompletion -Force; break } catch { $retries++; Start-Sleep -Seconds 30 } }; shutdown /r /t 15 /f"'''
 
-var houstonDc2ReplicaTemplate = '''powershell -ExecutionPolicy Bypass -Command "Set-DnsClientServerAddress -InterfaceAlias Ethernet -ServerAddresses __DC1IP__; Install-WindowsFeature AD-Domain-Services, DNS -IncludeManagementTools; Import-Module ADDSDeployment; $pw = ConvertTo-SecureString '__PASSWORD__' -AsPlainText -Force; $cred = New-Object System.Management.Automation.PSCredential('__NETBIOS__\__USER__', $pw); $retries = 0; while ($retries -lt 10) { try { Install-ADDSDomainController -DomainName '__DOMAIN__' -Credential $cred -InstallDNS -SafeModeAdministratorPassword $pw -NoRebootOnCompletion -Force; break } catch { $retries++; Start-Sleep -Seconds 30 } }; shutdown /r /t 15 /f"'''
+var houstonDc2ReplicaTemplate = '''powershell -ExecutionPolicy Bypass -Command "$ifIndex = (Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -First 1 -ExpandProperty ifIndex); if ($ifIndex) { Set-DnsClientServerAddress -InterfaceIndex $ifIndex -ServerAddresses __DC1IP__ }; Install-WindowsFeature AD-Domain-Services, DNS -IncludeManagementTools; Import-Module ADDSDeployment; $pw = ConvertTo-SecureString '__PASSWORD__' -AsPlainText -Force; $cred = New-Object System.Management.Automation.PSCredential('__NETBIOS__\__USER__', $pw); $retries = 0; while ($retries -lt 10) { try { Install-ADDSDomainController -DomainName '__DOMAIN__' -Credential $cred -InstallDNS -SafeModeAdministratorPassword $pw -NoRebootOnCompletion -Force; break } catch { $retries++; Start-Sleep -Seconds 30 } }; shutdown /r /t 15 /f"'''
 
-var domainJoinTemplate = '''powershell -ExecutionPolicy Bypass -Command "Set-DnsClientServerAddress -InterfaceAlias Ethernet -ServerAddresses __DC1IP__; $pw = ConvertTo-SecureString '__PASSWORD__' -AsPlainText -Force; $cred = New-Object System.Management.Automation.PSCredential('__NETBIOS__\__USER__', $pw); $retries = 0; $joined = $false; while ($retries -lt 10 -and -not $joined) { try { Add-Computer -DomainName '__DOMAIN__' -Credential $cred -Force; $joined = $true } catch { $retries++; Start-Sleep -Seconds 30 } }; if ($joined) { shutdown /r /t 15 /f }"'''
+var domainJoinTemplate = '''powershell -ExecutionPolicy Bypass -Command "$ifIndex = (Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -First 1 -ExpandProperty ifIndex); if ($ifIndex) { Set-DnsClientServerAddress -InterfaceIndex $ifIndex -ServerAddresses __DC1IP__ }; $pw = ConvertTo-SecureString '__PASSWORD__' -AsPlainText -Force; $cred = New-Object System.Management.Automation.PSCredential('__NETBIOS__\__USER__', $pw); $retries = 0; $joined = $false; while ($retries -lt 10 -and -not $joined) { try { Add-Computer -DomainName '__DOMAIN__' -Credential $cred -Force; $joined = $true } catch { $retries++; Start-Sleep -Seconds 30 } }; if ($joined) { shutdown /r /t 15 /f }"'''
 
 // #disable-next-line secure-parameter-in-expression
 var houstonDc1Script = enableDCPromotion ? replace(replace(replace(houstonDc1Template, '__PASSWORD__', adminPassword), '__DOMAIN__', houstonDomainName), '__NETBIOS__', houstonNetbiosName) : ''
@@ -163,11 +202,14 @@ var westDc1Script = enableDCPromotion ? replace(replace(replace(westDc1Template,
 
 // #disable-next-line secure-parameter-in-expression
 var houstonDc2Script = enableDCPromotion ? (houstonDc2Role == 'RODC'
-  ? replace(replace(replace(replace(replace(houstonDc2RodcTemplate, '__DC1IP__', houstonDc1Ip), '__PASSWORD__', adminPassword), '__NETBIOS__', houstonNetbiosName), '__USER__', adminUsername), '__DOMAIN__', houstonDomainName)
+  ? replace(replace(replace(replace(replace(replace(houstonDc2RodcTemplate, '__DC1IP__', houstonDc1Ip), '__PASSWORD__', adminPassword), '__NETBIOS__', houstonNetbiosName), '__USER__', adminUsername), '__DOMAIN__', houstonDomainName), '__SITENAME__', dcPromotionSiteName)
   : replace(replace(replace(replace(replace(houstonDc2ReplicaTemplate, '__DC1IP__', houstonDc1Ip), '__PASSWORD__', adminPassword), '__NETBIOS__', houstonNetbiosName), '__USER__', adminUsername), '__DOMAIN__', houstonDomainName)) : ''
 
 // #disable-next-line secure-parameter-in-expression
 var domainJoinScript = enableDCPromotion ? replace(replace(replace(replace(replace(domainJoinTemplate, '__DC1IP__', houstonDc1Ip), '__PASSWORD__', adminPassword), '__NETBIOS__', houstonNetbiosName), '__USER__', adminUsername), '__DOMAIN__', houstonDomainName) : ''
+
+// #disable-next-line secure-parameter-in-expression
+var westDomainJoinScript = enableDCPromotion ? replace(replace(replace(replace(replace(domainJoinTemplate, '__DC1IP__', westDc1Ip), '__PASSWORD__', adminPassword), '__NETBIOS__', westNetbiosName), '__USER__', adminUsername), '__DOMAIN__', westDomainName) : ''
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Networking (VNets, NSGs, Peering)
@@ -342,6 +384,106 @@ module houstonVm2 './modules/windows-vm.bicep' = {
   }
 }
 
+module houstonFs1 './modules/windows-vm.bicep' = {
+  name: 'vm-houston-fs1'
+  dependsOn: [
+    houstonDc1
+  ]
+  params: {
+    location: location
+    vmName: houstonFs1Name
+    vmSize: memberVmSize
+    subnetId: networking.outputs.houstonSubnetId
+    privateIpAddress: houstonFs1Ip
+    adminUsername: adminUsername
+    adminPassword: adminPassword
+    publisher: 'MicrosoftWindowsServer'
+    offer: 'WindowsServer'
+    sku: '2022-datacenter-azure-edition'
+    createPublicIp: houstonFs1PublicIp
+    tags: tags
+    commandToExecute: domainJoinScript
+    enableSystemIdentity: deployMonitoring
+    enableAma: deployMonitoring
+    dataCollectionRuleId: deployMonitoring ? monitoring.outputs.dcrId : ''
+  }
+}
+
+module houstonDhcp1 './modules/windows-vm.bicep' = {
+  name: 'vm-houston-dhcp1'
+  dependsOn: [
+    houstonDc1
+  ]
+  params: {
+    location: location
+    vmName: houstonDhcp1Name
+    vmSize: memberVmSize
+    subnetId: networking.outputs.houstonSubnetId
+    privateIpAddress: houstonDhcp1Ip
+    adminUsername: adminUsername
+    adminPassword: adminPassword
+    publisher: 'MicrosoftWindowsServer'
+    offer: 'WindowsServer'
+    sku: '2022-datacenter-azure-edition'
+    createPublicIp: houstonDhcp1PublicIp
+    tags: tags
+    commandToExecute: domainJoinScript
+    enableSystemIdentity: deployMonitoring
+    enableAma: deployMonitoring
+    dataCollectionRuleId: deployMonitoring ? monitoring.outputs.dcrId : ''
+  }
+}
+
+module houstonAac1 './modules/windows-vm.bicep' = {
+  name: 'vm-houston-aac1'
+  dependsOn: [
+    houstonDc1
+  ]
+  params: {
+    location: location
+    vmName: houstonAac1Name
+    vmSize: memberVmSize
+    subnetId: networking.outputs.houstonSubnetId
+    privateIpAddress: houstonAac1Ip
+    adminUsername: adminUsername
+    adminPassword: adminPassword
+    publisher: 'MicrosoftWindowsServer'
+    offer: 'WindowsServer'
+    sku: '2022-datacenter-azure-edition'
+    createPublicIp: houstonAac1PublicIp
+    tags: tags
+    commandToExecute: domainJoinScript
+    enableSystemIdentity: deployMonitoring
+    enableAma: deployMonitoring
+    dataCollectionRuleId: deployMonitoring ? monitoring.outputs.dcrId : ''
+  }
+}
+
+module westFs1 './modules/windows-vm.bicep' = {
+  name: 'vm-west-fs1'
+  dependsOn: [
+    westDc1
+  ]
+  params: {
+    location: resolvedWestLocation
+    vmName: westFs1Name
+    vmSize: memberVmSize
+    subnetId: networking.outputs.westSubnetId
+    privateIpAddress: westFs1Ip
+    adminUsername: adminUsername
+    adminPassword: adminPassword
+    publisher: 'MicrosoftWindowsServer'
+    offer: 'WindowsServer'
+    sku: '2022-datacenter-azure-edition'
+    createPublicIp: westFs1PublicIp
+    tags: tags
+    commandToExecute: westDomainJoinScript
+    enableSystemIdentity: deployMonitoring
+    enableAma: deployMonitoring
+    dataCollectionRuleId: deployMonitoring ? monitoring.outputs.dcrId : ''
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Outputs
 // ═══════════════════════════════════════════════════════════════════════════
@@ -360,6 +502,14 @@ output houstonDc2PrivateIp string = houstonDc2.outputs.privateIp
 output westDc1PrivateIp string = westDc1.outputs.privateIp
 output houstonVm1PrivateIp string = houstonVm1.outputs.privateIp
 output houstonVm2PrivateIp string = houstonVm2.outputs.privateIp
+output houstonFs1VmName string = houstonFs1.outputs.vmName
+output houstonDhcp1VmName string = houstonDhcp1.outputs.vmName
+output houstonAac1VmName string = houstonAac1.outputs.vmName
+output westFs1VmName string = westFs1.outputs.vmName
+output houstonFs1PrivateIp string = houstonFs1.outputs.privateIp
+output houstonDhcp1PrivateIp string = houstonDhcp1.outputs.privateIp
+output houstonAac1PrivateIp string = houstonAac1.outputs.privateIp
+output westFs1PrivateIp string = westFs1.outputs.privateIp
 output bastionName string = deployBastion ? bastion.outputs.bastionName : ''
 output logAnalyticsWorkspaceId string = deployMonitoring ? monitoring.outputs.lawId : ''
 output logAnalyticsWorkspaceName string = deployMonitoring ? monitoring.outputs.lawName : ''

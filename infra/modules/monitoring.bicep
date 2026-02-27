@@ -130,7 +130,7 @@ resource actionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = if (deployAl
 // Alert: VM Heartbeat Loss
 // ═══════════════════════════════════════════════════════════════════════
 
-resource heartbeatAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = if (deployAlerts) {
+resource heartbeatAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = if (deployAlerts) {
   name: 'alert-vm-heartbeat-loss'
   location: location
   tags: tags
@@ -166,7 +166,7 @@ resource heartbeatAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-previ
 // Alert: High CPU (> 90% for 5 minutes)
 // ═══════════════════════════════════════════════════════════════════════
 
-resource cpuAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = if (deployAlerts) {
+resource cpuAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = if (deployAlerts) {
   name: 'alert-high-cpu'
   location: location
   tags: tags
@@ -202,7 +202,7 @@ resource cpuAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = 
 // Alert: Low Disk Space (< 10% free)
 // ═══════════════════════════════════════════════════════════════════════
 
-resource diskAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = if (deployAlerts) {
+resource diskAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = if (deployAlerts) {
   name: 'alert-low-disk-space'
   location: location
   tags: tags
@@ -238,7 +238,7 @@ resource diskAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' =
 // Alert: Account Lockout (Security Event 4740)
 // ═══════════════════════════════════════════════════════════════════════
 
-resource lockoutAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = if (deployAlerts) {
+resource lockoutAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = if (deployAlerts) {
   name: 'alert-account-lockout'
   location: location
   tags: tags

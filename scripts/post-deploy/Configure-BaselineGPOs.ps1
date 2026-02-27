@@ -1,4 +1,7 @@
 #Requires -RunAsAdministrator
+param(
+    [string]$DomainFqdn = 'lab.local'
+)
 <#
 .SYNOPSIS
     Creates and links security baseline GPOs for lab.local.
@@ -30,9 +33,12 @@ if (-not $gpmc.Installed) {
     Write-Host "  GPMC already installed."
 }
 
+Import-Module ActiveDirectory
 Import-Module GroupPolicy
 
-$domainDN = "DC=lab,DC=local"
+$resolvedDomain = if ([string]::IsNullOrWhiteSpace($DomainFqdn)) { 'lab.local' } else { $DomainFqdn }
+$domainInfo = Get-ADDomain -Identity $resolvedDomain
+$domainDN = $domainInfo.DistinguishedName
 
 # ═════════════════════════════════════════════════════════════════════
 # GPO 1: Password and Account Lockout Policy
@@ -41,7 +47,7 @@ Write-Host "`n[1/5] Configuring domain password and lockout policy..." -Foregrou
 
 # Domain password policy is set via Default Domain Policy or Set-ADDefaultDomainPasswordPolicy.
 # This is the correct way -- GPO registry hacks don't apply to domain password policy.
-Set-ADDefaultDomainPasswordPolicy -Identity "lab.local" `
+Set-ADDefaultDomainPasswordPolicy -Identity $resolvedDomain `
     -MinPasswordLength 12 `
     -PasswordHistoryCount 24 `
     -MaxPasswordAge (New-TimeSpan -Days 90) `
@@ -167,7 +173,7 @@ Get-GPInheritance -Target $domainDN | Select-Object -ExpandProperty GpoLinks |
     Format-Table DisplayName, Enabled, Enforced, Order
 
 Write-Host "--- Domain Password Policy ---"
-Get-ADDefaultDomainPasswordPolicy -Identity "lab.local" |
+Get-ADDefaultDomainPasswordPolicy -Identity $resolvedDomain |
     Select-Object MinPasswordLength, PasswordHistoryCount, MaxPasswordAge,
         ComplexityEnabled, LockoutThreshold, LockoutDuration |
     Format-List

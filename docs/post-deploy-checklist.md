@@ -239,3 +239,129 @@ Get-GPO -All | Format-Table DisplayName, GpoStatus
 gpresult /r
 ```
 
+## 15. Configure File Server (HOUSTONFS1)
+
+Install file server roles, create SMB shares with NTFS permissions, and set up a DFS Namespace.
+
+```powershell
+# On HOUSTONFS1:
+.\scripts\post-deploy\Configure-FileServer.ps1
+```
+
+Expected result: Department, Public, and IT shares exist. DFS Namespace `\\lab.local\Shares` is accessible.
+
+Verify:
+
+```powershell
+Get-SmbShare | Where-Object { $_.Name -notin @('ADMIN$', 'C$', 'IPC$') }
+Test-Path "\\lab.local\Shares"
+```
+
+## 16. Configure File Server (WESTFS1)
+
+Install file server roles on WESTFS1 and create matching share structure for DFS Replication.
+
+```powershell
+# On WESTFS1:
+.\scripts\post-deploy\Configure-FileServer.ps1 -SkipDfsNamespace
+```
+
+Expected result: Department, Public, and IT shares exist on WESTFS1.
+
+## 17. Configure DFS Replication
+
+Create a replication group between HOUSTONFS1 and WESTFS1 to replicate the Department folder across forests.
+
+```powershell
+# On HOUSTONDC1 (manages replication group):
+.\scripts\post-deploy\Configure-DFSReplication.ps1
+```
+
+Expected result: DFS Replication group `Houston-West-Replication` exists with HOUSTONFS1 as primary member.
+
+Verify:
+
+```powershell
+Get-DfsReplicationGroup -GroupName 'Houston-West-Replication'
+Get-DfsrBacklog -GroupName 'Houston-West-Replication' -SourceComputerName HOUSTONFS1 -DestinationComputerName WESTFS1 -FolderName Department
+```
+
+## 18. Configure DHCP Server
+
+Install DHCP, authorize in AD, and create a scope for the Houston subnet.
+
+```powershell
+# On HOUSTONDHCP1:
+.\scripts\post-deploy\Configure-DHCP.ps1
+```
+
+Expected result: DHCP authorized, Houston-Clients scope active (10.20.1.100-200) with DNS and gateway options.
+
+Verify:
+
+```powershell
+Get-DhcpServerInDC
+Get-DhcpServerv4Scope
+Get-DhcpServerv4OptionValue -ScopeId 10.20.1.0
+```
+
+## 19. Configure WSUS
+
+Install WSUS on HOUSTONDHCP1, configure products/classifications, and create a client GPO.
+
+```powershell
+# On HOUSTONDHCP1:
+.\scripts\post-deploy\Configure-WSUS.ps1
+```
+
+Expected result: WSUS running on port 8530, computer target groups created, client GPO linked.
+
+Verify:
+
+```powershell
+Get-Service WsusService
+Get-GPO -Name 'WSUS - Client Configuration'
+# On a client after gpupdate /force:
+reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate" /v WUServer
+```
+
+## 20. Configure AD CS (Enterprise Root CA)
+
+Install an Enterprise Root CA on HOUSTONDC1, publish certificate templates, and enable LDAPS.
+
+```powershell
+# On HOUSTONDC1:
+.\scripts\post-deploy\Configure-ADCS.ps1
+```
+
+Expected result: CA service running, LDAPS listening on port 636, Web Enrollment accessible.
+
+Verify:
+
+```powershell
+certutil -ca
+certutil -ping
+Test-NetConnection -ComputerName HOUSTONDC1 -Port 636
+```
+
+## 21. Configure Entra Connect
+
+Install and configure Microsoft Entra Connect for hybrid identity sync from lab.local to your Entra ID tenant.
+
+```powershell
+# On HOUSTAAC1:
+.\scripts\post-deploy\Configure-EntraConnect.ps1 -TenantDomain "yourtenant.onmicrosoft.com"
+```
+
+The script installs prerequisites, downloads Entra Connect, creates test users, and guides you through the wizard configuration.
+
+Expected result: ADSync service running, test users synced to Entra ID.
+
+Verify:
+
+```powershell
+Get-Service ADSync
+Start-ADSyncSyncCycle -PolicyType Delta
+# Check Entra portal for synced users
+```
+
