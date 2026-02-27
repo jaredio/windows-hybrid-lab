@@ -1,11 +1,13 @@
 targetScope = 'resourceGroup'
 
+// ── Region ──────────────────────────────────────────────────────────────────
 @description('Primary Azure region for Houston resources.')
 param location string = resourceGroup().location
 
 @description('Optional region override for West resources. Uses location when empty.')
 param westLocation string = ''
 
+// ── Credentials ─────────────────────────────────────────────────────────────
 @description('Local administrator username for all VMs.')
 param adminUsername string = 'labadmin'
 
@@ -14,6 +16,7 @@ param adminUsername string = 'labadmin'
 @description('Local administrator password for all VMs.')
 param adminPassword string
 
+// ── Networking ──────────────────────────────────────────────────────────────
 @description('Public source CIDR allowed for RDP (3389). Set to your public IP for security.')
 param allowedSourceAddressPrefix string = '*'
 
@@ -35,12 +38,14 @@ param westAddressSpace string = '10.30.0.0/16'
 @description('West subnet CIDR block.')
 param westSubnetPrefix string = '10.30.1.0/24'
 
+// ── VM sizing ───────────────────────────────────────────────────────────────
 @description('VM size for domain controllers.')
 param domainControllerVmSize string = 'Standard_B2ms'
 
 @description('VM size for member VMs.')
 param memberVmSize string = 'Standard_B2s'
 
+// ── VM names ────────────────────────────────────────────────────────────────
 @description('Name of the Houston primary domain controller.')
 param houstonDc1Name string = 'HOUSTONDC1'
 
@@ -56,6 +61,7 @@ param houstonVm1Name string = 'HOUSTONVM1'
 @description('Name of the second Houston member VM.')
 param houstonVm2Name string = 'HOUSTONVM2'
 
+// ── Private IPs ─────────────────────────────────────────────────────────────
 @description('Private IP address for HOUSTONDC1.')
 param houstonDc1Ip string = '10.20.1.10'
 
@@ -71,6 +77,7 @@ param houstonVm1Ip string = '10.20.1.20'
 @description('Private IP address for HOUSTONVM2.')
 param houstonVm2Ip string = '10.20.1.21'
 
+// ── Public IP toggles ──────────────────────────────────────────────────────
 @description('Whether HOUSTONDC1 gets a public IP.')
 param houstonDc1PublicIp bool = false
 
@@ -86,10 +93,45 @@ param houstonVm1PublicIp bool = true
 @description('Whether HOUSTONVM2 gets a public IP.')
 param houstonVm2PublicIp bool = false
 
+// ── AD DS role ──────────────────────────────────────────────────────────────
 @allowed(['WritableReplica', 'RODC'])
 @description('Role for HOUSTONDC2: writable replica DC or Read-Only Domain Controller.')
 param houstonDc2Role string = 'WritableReplica'
 
+// ── Bastion ─────────────────────────────────────────────────────────────────
+@description('Deploy Azure Bastion for secure RDP access (replaces public IP RDP).')
+param deployBastion bool = true
+
+@description('Address prefix for the AzureBastionSubnet. Must be /26 or larger within Houston VNet.')
+param bastionSubnetPrefix string = '10.20.0.0/26'
+
+// ── DC Promotion ────────────────────────────────────────────────────────────
+@description('Automatically promote DCs and join member VMs via CustomScriptExtension.')
+param enableDCPromotion bool = false
+
+@description('FQDN for the Houston forest root domain.')
+param houstonDomainName string = 'lab.local'
+
+@description('NetBIOS name for the Houston domain.')
+param houstonNetbiosName string = 'LAB'
+
+@description('FQDN for the West forest root domain.')
+param westDomainName string = 'west.lab.local'
+
+@description('NetBIOS name for the West domain.')
+param westNetbiosName string = 'WEST'
+
+// ── Monitoring ──────────────────────────────────────────────────────────────
+@description('Deploy Log Analytics workspace and Azure Monitor Agent for centralized logging.')
+param deployMonitoring bool = true
+
+@description('Log Analytics workspace retention in days.')
+param logAnalyticsRetentionDays int = 30
+
+@description('Email address for Azure Monitor alert notifications. Leave empty to skip alert deployment.')
+param alertEmailAddress string = ''
+
+// ── Tags ────────────────────────────────────────────────────────────────────
 @description('Tags applied to all resources.')
 param tags object = {
   workload: 'windows-hybrid-lab'
@@ -97,129 +139,89 @@ param tags object = {
   project: 'windows-hybrid-lab'
 }
 
+// ── Variables ───────────────────────────────────────────────────────────────
 var resolvedWestLocation = empty(westLocation) ? location : westLocation
-var houstonSubnetName = 'HoustonServers'
-var westSubnetName = 'WestServers'
 
-resource houstonNsg 'Microsoft.Network/networkSecurityGroups@2023-09-01' = {
-  name: '${houstonVnetName}-nsg'
-  location: location
-  tags: tags
-  properties: {
-    securityRules: [
-      {
-        name: 'allow-rdp-inbound'
-        properties: {
-          priority: 100
-          access: 'Allow'
-          direction: 'Inbound'
-          protocol: 'Tcp'
-          sourcePortRange: '*'
-          destinationPortRange: '3389'
-          sourceAddressPrefix: allowedSourceAddressPrefix
-          destinationAddressPrefix: '*'
-        }
-      }
-    ]
+// ── DC Promotion Scripts ────────────────────────────────────────────────────
+// Triple-quoted strings (''') avoid Bicep quoting issues. replace() substitutes params.
+
+var houstonDc1Template = '''powershell -ExecutionPolicy Bypass -Command "Install-WindowsFeature AD-Domain-Services, DNS -IncludeManagementTools; Import-Module ADDSDeployment; $pw = ConvertTo-SecureString '__PASSWORD__' -AsPlainText -Force; Install-ADDSForest -DomainName '__DOMAIN__' -DomainNetbiosName '__NETBIOS__' -InstallDNS -SafeModeAdministratorPassword $pw -NoRebootOnCompletion -Force; Add-DnsServerPrimaryZone -NetworkId '10.20.1.0/24' -ReplicationScope Forest -ErrorAction SilentlyContinue; shutdown /r /t 15 /f"'''
+
+var westDc1Template = '''powershell -ExecutionPolicy Bypass -Command "Install-WindowsFeature AD-Domain-Services, DNS -IncludeManagementTools; Import-Module ADDSDeployment; $pw = ConvertTo-SecureString '__PASSWORD__' -AsPlainText -Force; Install-ADDSForest -DomainName '__DOMAIN__' -DomainNetbiosName '__NETBIOS__' -InstallDNS -SafeModeAdministratorPassword $pw -NoRebootOnCompletion -Force; Add-DnsServerPrimaryZone -NetworkId '10.30.1.0/24' -ReplicationScope Forest -ErrorAction SilentlyContinue; shutdown /r /t 15 /f"'''
+
+var houstonDc2RodcTemplate = '''powershell -ExecutionPolicy Bypass -Command "Set-DnsClientServerAddress -InterfaceAlias Ethernet -ServerAddresses __DC1IP__; Install-WindowsFeature AD-Domain-Services, DNS -IncludeManagementTools; Import-Module ADDSDeployment; $pw = ConvertTo-SecureString '__PASSWORD__' -AsPlainText -Force; $cred = New-Object System.Management.Automation.PSCredential('__NETBIOS__\__USER__', $pw); $retries = 0; while ($retries -lt 10) { try { Install-ADDSReadOnlyDomainController -DomainName '__DOMAIN__' -Credential $cred -InstallDNS -SafeModeAdministratorPassword $pw -SiteName 'Default-First-Site-Name' -NoRebootOnCompletion -Force; break } catch { $retries++; Start-Sleep -Seconds 30 } }; shutdown /r /t 15 /f"'''
+
+var houstonDc2ReplicaTemplate = '''powershell -ExecutionPolicy Bypass -Command "Set-DnsClientServerAddress -InterfaceAlias Ethernet -ServerAddresses __DC1IP__; Install-WindowsFeature AD-Domain-Services, DNS -IncludeManagementTools; Import-Module ADDSDeployment; $pw = ConvertTo-SecureString '__PASSWORD__' -AsPlainText -Force; $cred = New-Object System.Management.Automation.PSCredential('__NETBIOS__\__USER__', $pw); $retries = 0; while ($retries -lt 10) { try { Install-ADDSDomainController -DomainName '__DOMAIN__' -Credential $cred -InstallDNS -SafeModeAdministratorPassword $pw -NoRebootOnCompletion -Force; break } catch { $retries++; Start-Sleep -Seconds 30 } }; shutdown /r /t 15 /f"'''
+
+var domainJoinTemplate = '''powershell -ExecutionPolicy Bypass -Command "Set-DnsClientServerAddress -InterfaceAlias Ethernet -ServerAddresses __DC1IP__; $pw = ConvertTo-SecureString '__PASSWORD__' -AsPlainText -Force; $cred = New-Object System.Management.Automation.PSCredential('__NETBIOS__\__USER__', $pw); $retries = 0; $joined = $false; while ($retries -lt 10 -and -not $joined) { try { Add-Computer -DomainName '__DOMAIN__' -Credential $cred -Force; $joined = $true } catch { $retries++; Start-Sleep -Seconds 30 } }; if ($joined) { shutdown /r /t 15 /f }"'''
+
+// #disable-next-line secure-parameter-in-expression
+var houstonDc1Script = enableDCPromotion ? replace(replace(replace(houstonDc1Template, '__PASSWORD__', adminPassword), '__DOMAIN__', houstonDomainName), '__NETBIOS__', houstonNetbiosName) : ''
+
+// #disable-next-line secure-parameter-in-expression
+var westDc1Script = enableDCPromotion ? replace(replace(replace(westDc1Template, '__PASSWORD__', adminPassword), '__DOMAIN__', westDomainName), '__NETBIOS__', westNetbiosName) : ''
+
+// #disable-next-line secure-parameter-in-expression
+var houstonDc2Script = enableDCPromotion ? (houstonDc2Role == 'RODC'
+  ? replace(replace(replace(replace(replace(houstonDc2RodcTemplate, '__DC1IP__', houstonDc1Ip), '__PASSWORD__', adminPassword), '__NETBIOS__', houstonNetbiosName), '__USER__', adminUsername), '__DOMAIN__', houstonDomainName)
+  : replace(replace(replace(replace(replace(houstonDc2ReplicaTemplate, '__DC1IP__', houstonDc1Ip), '__PASSWORD__', adminPassword), '__NETBIOS__', houstonNetbiosName), '__USER__', adminUsername), '__DOMAIN__', houstonDomainName)) : ''
+
+// #disable-next-line secure-parameter-in-expression
+var domainJoinScript = enableDCPromotion ? replace(replace(replace(replace(replace(domainJoinTemplate, '__DC1IP__', houstonDc1Ip), '__PASSWORD__', adminPassword), '__NETBIOS__', houstonNetbiosName), '__USER__', adminUsername), '__DOMAIN__', houstonDomainName) : ''
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Networking (VNets, NSGs, Peering)
+// ═══════════════════════════════════════════════════════════════════════════
+
+module networking './modules/networking.bicep' = {
+  name: 'networking'
+  params: {
+    location: location
+    westLocation: resolvedWestLocation
+    houstonVnetName: houstonVnetName
+    houstonAddressSpace: houstonAddressSpace
+    houstonSubnetPrefix: houstonSubnetPrefix
+    westVnetName: westVnetName
+    westAddressSpace: westAddressSpace
+    westSubnetPrefix: westSubnetPrefix
+    allowedSourceAddressPrefix: allowedSourceAddressPrefix
+    deployBastionSubnet: deployBastion
+    bastionSubnetPrefix: bastionSubnetPrefix
+    tags: tags
   }
 }
 
-resource westNsg 'Microsoft.Network/networkSecurityGroups@2023-09-01' = {
-  name: '${westVnetName}-nsg'
-  location: resolvedWestLocation
-  tags: tags
-  properties: {
-    securityRules: [
-      {
-        name: 'allow-rdp-inbound'
-        properties: {
-          priority: 100
-          access: 'Allow'
-          direction: 'Inbound'
-          protocol: 'Tcp'
-          sourcePortRange: '*'
-          destinationPortRange: '3389'
-          sourceAddressPrefix: allowedSourceAddressPrefix
-          destinationAddressPrefix: '*'
-        }
-      }
-    ]
+// ═══════════════════════════════════════════════════════════════════════════
+// Azure Bastion
+// ═══════════════════════════════════════════════════════════════════════════
+
+module bastion './modules/bastion.bicep' = if (deployBastion) {
+  name: 'bastion'
+  params: {
+    location: location
+    namePrefix: houstonVnetName
+    bastionSubnetId: networking.outputs.bastionSubnetId
+    tags: tags
   }
 }
 
-resource houstonVnet 'Microsoft.Network/virtualNetworks@2023-09-01' = {
-  name: houstonVnetName
-  location: location
-  tags: tags
-  properties: {
-    addressSpace: {
-      addressPrefixes: [
-        houstonAddressSpace
-      ]
-    }
-    subnets: [
-      {
-        name: houstonSubnetName
-        properties: {
-          addressPrefix: houstonSubnetPrefix
-          networkSecurityGroup: {
-            id: houstonNsg.id
-          }
-        }
-      }
-    ]
+// ═══════════════════════════════════════════════════════════════════════════
+// Monitoring (Log Analytics, DCR, Alerts)
+// ═══════════════════════════════════════════════════════════════════════════
+
+module monitoring './modules/monitoring.bicep' = if (deployMonitoring) {
+  name: 'monitoring'
+  params: {
+    location: location
+    retentionDays: logAnalyticsRetentionDays
+    alertEmailAddress: alertEmailAddress
+    tags: tags
   }
 }
 
-resource westVnet 'Microsoft.Network/virtualNetworks@2023-09-01' = {
-  name: westVnetName
-  location: resolvedWestLocation
-  tags: tags
-  properties: {
-    addressSpace: {
-      addressPrefixes: [
-        westAddressSpace
-      ]
-    }
-    subnets: [
-      {
-        name: westSubnetName
-        properties: {
-          addressPrefix: westSubnetPrefix
-          networkSecurityGroup: {
-            id: westNsg.id
-          }
-        }
-      }
-    ]
-  }
-}
-
-resource houstonToWestPeering 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2023-09-01' = {
-  name: '${houstonVnet.name}/HoustonToWest'
-  properties: {
-    remoteVirtualNetwork: {
-      id: westVnet.id
-    }
-    allowVirtualNetworkAccess: true
-    allowForwardedTraffic: true
-    allowGatewayTransit: false
-    useRemoteGateways: false
-  }
-}
-
-resource westToHoustonPeering 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2023-09-01' = {
-  name: '${westVnet.name}/WestToHouston'
-  properties: {
-    remoteVirtualNetwork: {
-      id: houstonVnet.id
-    }
-    allowVirtualNetworkAccess: true
-    allowForwardedTraffic: true
-    allowGatewayTransit: false
-    useRemoteGateways: false
-  }
-}
+// ═══════════════════════════════════════════════════════════════════════════
+// Virtual Machines
+// ═══════════════════════════════════════════════════════════════════════════
 
 module houstonDc1 './modules/windows-vm.bicep' = {
   name: 'vm-houston-dc1'
@@ -227,7 +229,7 @@ module houstonDc1 './modules/windows-vm.bicep' = {
     location: location
     vmName: houstonDc1Name
     vmSize: domainControllerVmSize
-    subnetId: resourceId('Microsoft.Network/virtualNetworks/subnets', houstonVnet.name, houstonSubnetName)
+    subnetId: networking.outputs.houstonSubnetId
     privateIpAddress: houstonDc1Ip
     adminUsername: adminUsername
     adminPassword: adminPassword
@@ -236,16 +238,23 @@ module houstonDc1 './modules/windows-vm.bicep' = {
     sku: '2022-datacenter-azure-edition'
     createPublicIp: houstonDc1PublicIp
     tags: tags
+    commandToExecute: houstonDc1Script
+    enableSystemIdentity: deployMonitoring
+    enableAma: deployMonitoring
+    dataCollectionRuleId: deployMonitoring ? monitoring.outputs.dcrId : ''
   }
 }
 
 module houstonDc2 './modules/windows-vm.bicep' = {
   name: 'vm-houston-dc2'
+  dependsOn: [
+    houstonDc1
+  ]
   params: {
     location: location
     vmName: houstonDc2Name
     vmSize: domainControllerVmSize
-    subnetId: resourceId('Microsoft.Network/virtualNetworks/subnets', houstonVnet.name, houstonSubnetName)
+    subnetId: networking.outputs.houstonSubnetId
     privateIpAddress: houstonDc2Ip
     adminUsername: adminUsername
     adminPassword: adminPassword
@@ -254,6 +263,10 @@ module houstonDc2 './modules/windows-vm.bicep' = {
     sku: '2022-datacenter-azure-edition'
     createPublicIp: houstonDc2PublicIp
     tags: union(tags, { adRole: houstonDc2Role })
+    commandToExecute: houstonDc2Script
+    enableSystemIdentity: deployMonitoring
+    enableAma: deployMonitoring
+    dataCollectionRuleId: deployMonitoring ? monitoring.outputs.dcrId : ''
   }
 }
 
@@ -263,7 +276,7 @@ module westDc1 './modules/windows-vm.bicep' = {
     location: resolvedWestLocation
     vmName: westDc1Name
     vmSize: domainControllerVmSize
-    subnetId: resourceId('Microsoft.Network/virtualNetworks/subnets', westVnet.name, westSubnetName)
+    subnetId: networking.outputs.westSubnetId
     privateIpAddress: westDc1Ip
     adminUsername: adminUsername
     adminPassword: adminPassword
@@ -272,16 +285,23 @@ module westDc1 './modules/windows-vm.bicep' = {
     sku: '2022-datacenter-azure-edition'
     createPublicIp: westDc1PublicIp
     tags: tags
+    commandToExecute: westDc1Script
+    enableSystemIdentity: deployMonitoring
+    enableAma: deployMonitoring
+    dataCollectionRuleId: deployMonitoring ? monitoring.outputs.dcrId : ''
   }
 }
 
 module houstonVm1 './modules/windows-vm.bicep' = {
   name: 'vm-houston-vm1'
+  dependsOn: [
+    houstonDc1
+  ]
   params: {
     location: location
     vmName: houstonVm1Name
     vmSize: memberVmSize
-    subnetId: resourceId('Microsoft.Network/virtualNetworks/subnets', houstonVnet.name, houstonSubnetName)
+    subnetId: networking.outputs.houstonSubnetId
     privateIpAddress: houstonVm1Ip
     adminUsername: adminUsername
     adminPassword: adminPassword
@@ -290,16 +310,23 @@ module houstonVm1 './modules/windows-vm.bicep' = {
     sku: '2022-datacenter-azure-edition'
     createPublicIp: houstonVm1PublicIp
     tags: tags
+    commandToExecute: domainJoinScript
+    enableSystemIdentity: deployMonitoring
+    enableAma: deployMonitoring
+    dataCollectionRuleId: deployMonitoring ? monitoring.outputs.dcrId : ''
   }
 }
 
 module houstonVm2 './modules/windows-vm.bicep' = {
   name: 'vm-houston-vm2'
+  dependsOn: [
+    houstonDc1
+  ]
   params: {
     location: location
     vmName: houstonVm2Name
     vmSize: memberVmSize
-    subnetId: resourceId('Microsoft.Network/virtualNetworks/subnets', houstonVnet.name, houstonSubnetName)
+    subnetId: networking.outputs.houstonSubnetId
     privateIpAddress: houstonVm2Ip
     adminUsername: adminUsername
     adminPassword: adminPassword
@@ -308,13 +335,21 @@ module houstonVm2 './modules/windows-vm.bicep' = {
     sku: '2022-datacenter-azure-edition'
     createPublicIp: houstonVm2PublicIp
     tags: tags
+    commandToExecute: domainJoinScript
+    enableSystemIdentity: deployMonitoring
+    enableAma: deployMonitoring
+    dataCollectionRuleId: deployMonitoring ? monitoring.outputs.dcrId : ''
   }
 }
 
-output houstonVnetResourceId string = houstonVnet.id
-output westVnetResourceId string = westVnet.id
-output houstonPeeringName string = houstonToWestPeering.name
-output westPeeringName string = westToHoustonPeering.name
+// ═══════════════════════════════════════════════════════════════════════════
+// Outputs
+// ═══════════════════════════════════════════════════════════════════════════
+
+output houstonVnetResourceId string = networking.outputs.houstonVnetId
+output westVnetResourceId string = networking.outputs.westVnetId
+output houstonPeeringName string = networking.outputs.houstonPeeringName
+output westPeeringName string = networking.outputs.westPeeringName
 output houstonDc1VmName string = houstonDc1.outputs.vmName
 output houstonDc2VmName string = houstonDc2.outputs.vmName
 output westDc1VmName string = westDc1.outputs.vmName
@@ -325,3 +360,6 @@ output houstonDc2PrivateIp string = houstonDc2.outputs.privateIp
 output westDc1PrivateIp string = westDc1.outputs.privateIp
 output houstonVm1PrivateIp string = houstonVm1.outputs.privateIp
 output houstonVm2PrivateIp string = houstonVm2.outputs.privateIp
+output bastionName string = deployBastion ? bastion.outputs.bastionName : ''
+output logAnalyticsWorkspaceId string = deployMonitoring ? monitoring.outputs.lawId : ''
+output logAnalyticsWorkspaceName string = deployMonitoring ? monitoring.outputs.lawName : ''

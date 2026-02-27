@@ -41,12 +41,32 @@ param houstonVm2Ip = '10.20.1.21'
 param houstonDc1PublicIp = false
 param houstonDc2PublicIp = false
 param westDc1PublicIp = false
-param houstonVm1PublicIp = true
+param houstonVm1PublicIp = false
 param houstonVm2PublicIp = false
 
 // ── AD DS role overrides ────────────────────────────────────────────
 // Change to 'RODC' to promote HOUSTONDC2 as a Read-Only Domain Controller
 param houstonDc2Role = 'WritableReplica'
+
+// ── Bastion ─────────────────────────────────────────────────────────
+param deployBastion = true
+param bastionSubnetPrefix = '10.20.0.0/26'
+
+// ── DC Promotion ────────────────────────────────────────────────────
+// Set to true to auto-promote DCs and join member VMs at deploy time
+param enableDCPromotion = false
+param houstonDomainName = 'lab.local'
+param houstonNetbiosName = 'LAB'
+param westDomainName = 'west.lab.local'
+param westNetbiosName = 'WEST'
+
+// ── Monitoring ──────────────────────────────────────────────────────
+param deployMonitoring = true
+param logAnalyticsRetentionDays = 30
+
+// ── Alerts ────────────────────────────────────────────────────────────
+// Set to your email to enable Azure Monitor alert rules (heartbeat, CPU, disk, lockout)
+param alertEmailAddress = ''
 
 // ── Tags ────────────────────────────────────────────────────────────
 param tags = {

@@ -2,6 +2,8 @@
 
 Use this checklist after deploying infrastructure from `infra/main.bicep`.
 
+> **Automation note:** When `enableDCPromotion=true`, sections 1-5 and 8 are handled automatically by CustomScriptExtension during deployment. You can skip those sections and start at section 6 (cross-forest DNS). The scripts include retry logic and automatic reboots.
+
 ## 1. Promote `HOUSTONDC1` as first DC for `lab.local`
 
 Run in elevated PowerShell:
@@ -68,19 +70,50 @@ Expected result: forward and reverse zones exist for west forest.
 
 ## 6. Configure cross-forest DNS resolution
 
-Add conditional forwarders:
+**Automated** (recommended):
+
+```powershell
+# On HOUSTONDC1:
+.\scripts\post-deploy\Configure-CrossForestDNS.ps1
+
+# Then on WESTDC1:
+.\scripts\post-deploy\Configure-CrossForestDNS.ps1
+```
+
+The script auto-detects which forest it's running on and creates the correct conditional forwarder for the other forest. It includes idempotency checks and validation.
+
+**Manual alternative** -- add conditional forwarders:
 
 - On Houston DNS (`HOUSTONDC1`/`HOUSTONDC2`): forward `west.lab.local` to `10.30.1.10`
 - On West DNS (`WESTDC1`): forward `lab.local` to `10.20.1.10` (and optionally `10.20.1.11`)
+
+```powershell
+# On HOUSTONDC1:
+Add-DnsServerConditionalForwarderZone -Name "west.lab.local" -MasterServers 10.30.1.10 -ReplicationScope Forest
+
+# On WESTDC1:
+Add-DnsServerConditionalForwarderZone -Name "lab.local" -MasterServers 10.20.1.10 -ReplicationScope Forest
+```
 
 Expected result: names resolve across forests over peered VNets.
 
 ## 7. Configure bidirectional forest trust
 
-Create a two-way forest trust between:
+**Automated** (recommended):
+
+```powershell
+# On HOUSTONDC1 (after DNS forwarders are configured in both directions):
+.\scripts\post-deploy\Configure-ForestTrust.ps1
+```
+
+The script validates DNS prerequisites, prompts for remote forest credentials, creates the trust via `netdom`, and verifies the secure channel.
+
+**Manual alternative** -- create a two-way forest trust between:
 
 - `lab.local`
 - `west.lab.local`
+
+Using Active Directory Domains and Trusts: right-click `lab.local` > Properties > Trusts > New Trust > target `west.lab.local`, Bidirectional, Forest trust.
 
 Expected result: users/resources can be authenticated across forests (per trust and ACL scope).
 
